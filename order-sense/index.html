@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Order Sense Daily Block Planner — Prompt Builder (MVP)</title>
+  <style>
+    :root { --bg:#0b0f14; --card:#121824; --muted:#93a4b8; --text:#e8eef7; --accent:#6aa6ff; --border:#1f2a3a; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial, sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:18px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; gap:12px; align-items:center; }
+    header h1 { margin:0; font-size:16px; letter-spacing:0.2px; }
+    header .hint { color:var(--muted); font-size:12px; }
+    main { display:grid; grid-template-columns: 1fr 1fr; gap:14px; padding:14px; }
+    @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
+    .card h2 { margin:0 0 10px; font-size:14px; }
+    label { display:block; font-size:12px; color:var(--muted); margin:10px 0 6px; }
+    input, textarea, select {
+      width:100%; box-sizing:border-box; padding:10px 10px; border-radius:10px;
+      background:#0e1522; border:1px solid #25344a; color:var(--text);
+      outline:none;
+    }
+    textarea { min-height:74px; resize:vertical; }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    button, a.btn {
+      background: #182235; color:var(--text); border:1px solid #2a3a55;
+      padding:10px 12px; border-radius:10px; cursor:pointer; text-decoration:none;
+      font-size:13px;
+    }
+    button.primary { border-color: #3b73ff; background: #14305e; }
+    button:disabled { opacity:0.5; cursor:not-allowed; }
+    .small { font-size:12px; color:var(--muted); margin-top:10px; line-height:1.4; }
+    .out { white-space:pre-wrap; background:#0e1522; border:1px solid #25344a; border-radius:12px; padding:12px; min-height:260px; }
+    .status { margin-left:auto; color:var(--muted); font-size:12px; }
+    .pill { display:inline-block; padding:4px 8px; border-radius:999px; border:1px solid #2a3a55; color:var(--muted); font-size:12px; }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Order Sense Daily Block Planner — Prompt Builder (MVP)</h1>
+    <div class="hint">입력 폼 → 프롬프트 생성 → 복사 → ChatGPT/Gemini에 붙여넣기</div>
+  </div>
+  <div class="status" id="status"><span class="pill">Ready</span></div>
+</header>
+
+<main>
+  <!-- INPUT -->
+  <section class="card">
+    <h2>Inputs</h2>
+
+    <label>Daily goal (필수, 1문장)</label>
+    <textarea id="goal" placeholder="예: Game24 baseline 속도 개선 + Graph-BoT 설계 초안 작성"></textarea>
+
+    <div class="row">
+      <div>
+        <label>Time budget (총 분)</label>
+        <input id="budget" type="number" min="30" step="10" placeholder="예: 480" />
+      </div>
+      <div>
+        <label>Block preference</label>
+        <input id="blocks" placeholder="예: 80m x 4 (비우면 자동 추천)" />
+      </div>
+    </div>
+
+    <label>Hard constraints (있으면)</label>
+    <textarea id="constraints" placeholder="예: 13:00~14:00 미팅, 18:00 이후 외출"></textarea>
+
+    <label>Evidence artifacts (있으면, 없으면 비워도 됨)</label>
+    <textarea id="evidence" placeholder="예: (1) 벤치마크 결과 표 (2) 설계 메모 10줄 (3) 다음 액션 3개"></textarea>
+
+    <div class="row">
+      <div>
+        <label>Energy / stress</label>
+        <select id="energy">
+          <option value="">(선택 안 함)</option>
+          <option value="peak">peak (고에너지)</option>
+          <option value="ok">ok (보통)</option>
+          <option value="low">low (저에너지)</option>
+        </select>
+      </div>
+      <div>
+        <label>Review items (선택)</label>
+        <input id="review" placeholder="예: 어제 설계의 open questions 2개" />
+      </div>
+    </div>
+
+    <div class="btns">
+      <button class="primary" id="genBtn" disabled>Generate Prompt</button>
+      <button id="resetBtn">Reset</button>
+      <button id="saveBtn">Save (Local)</button>
+      <button id="loadBtn">Load (Local)</button>
+    </div>
+
+    <div class="small">
+      - MVP는 <b>LLM 호출 없이</b> 프롬프트만 생성합니다.<br/>
+      - Evidence가 비어있으면 모델이 2~3개를 제안하도록 유도합니다.
+    </div>
+  </section>
+
+  <!-- OUTPUT -->
+  <section class="card">
+    <h2>Generated Prompt</h2>
+    <div class="btns">
+      <button id="copyPromptBtn" disabled>Copy Prompt</button>
+      <button id="copyTemplateBtn">Copy Output Template Only</button>
+      <a class="btn" href="https://chatgpt.com/" target="_blank" rel="noreferrer">Open ChatGPT</a>
+      <a class="btn" href="https://gemini.google.com/" target="_blank" rel="noreferrer">Open Gemini</a>
+    </div>
+
+    <div class="out" id="out"></div>
+
+    <div class="small">
+      붙여넣기 팁: 생성된 프롬프트 전체를 복사해서 모델에게 보내면,
+      결과가 Logseq에 붙여넣기 쉬운 마크다운으로 출력됩니다.
+    </div>
+  </section>
+</main>
+
+<script>
+  // ---------- Fixed system prompt (English-think / Korean-output) ----------
+  const SYSTEM_PROMPT = `# Role (Single LLM) — English-think / Korean-output Hybrid
+You are the **Order Sense Daily Block Planner**.
+You MUST do your internal reasoning in **English** to maximize planning quality, but you MUST output the final plan in **Korean**, using the exact Logseq-friendly template below.
+
+✅ Internal reasoning language: English only
+✅ Final output language: Korean only
+✅ Output must match the template exactly
+❌ Do not reveal chain-of-thought or English reasoning
+
+## Task
+Convert the user's daily goals into a timeboxed, block-based execution plan using order sense:
+dependencies, redo-cost, energy management, batching.
+
+Rules:
+- If inputs are incomplete, do NOT stop. Make reasonable assumptions and proceed.
+- If assumptions are significant, list 2–3 short assumptions at the top (in Korean).
+- Output ONLY the final plan using the template. No extra commentary.
+`;
+
+  const OUTPUT_TEMPLATE = `- 활동 계획 ([순서감각])
+  - 공통 운영 규칙
+    - (Order sense) cognition -> understanding -> execution
+    - (Big -> small) lock structure/boundaries first, details later
+    - (Preview) make a quick map before deep work
+    - (High cost, peak energy) decide measurement/logging/interfaces when energy is high
+    - (Batching) one work-mode per block; avoid switching
+    - (Stuck rule) if stuck for 10m: write a 1-line question + park it; continue; re-enter at end
+    - (Close rule) last 5m: save artifact + write next block's first 3 actions
+  - Block 1: <name> (<duration>)
+    - Goal:
+    - Mode: <Preview|Design|Execute|Review|Synthesize>
+    - Pass (optional): <1|2|3>
+    - Inputs (forest):
+    - Actions (3-6):
+    - Done definition (today):
+    - Stop condition (optional):
+    - Artifact(s):
+    - Next 3 actions:
+    - Risks (max 2):
+  - Block 2: <name> (<duration>)
+    - Goal:
+    - Mode: <Preview|Design|Execute|Review|Synthesize>
+    - Pass (optional): <1|2|3>
+    - Inputs (forest):
+    - Actions (3-6):
+    - Done definition (today):
+    - Stop condition (optional):
+    - Artifact(s):
+    - Next 3 actions:
+    - Risks (max 2):
+  - Block 3: <name> (<duration>)
+    - Goal:
+    - Mode: <Preview|Design|Execute|Review|Synthesize>
+    - Pass (optional): <1|2|3>
+    - Inputs (forest):
+    - Actions (3-6):
+    - Done definition (today):
+    - Stop condition (optional):
+    - Artifact(s):
+    - Next 3 actions:
+    - Risks (max 2):
+  - Block 4: <name> (<duration>)
+    - Goal:
+    - Mode: <Preview|Design|Execute|Review|Synthesize>
+    - Pass (optional): <1|2|3>
+    - Inputs (forest):
+    - Actions (3-6):
+    - Done definition (today):
+    - Stop condition (optional):
+    - Artifact(s):
+    - Next 3 actions:
+    - Risks (max 2):
+
+- End-of-day boundary:
+  - Completed today (evidence):
+  - Explicit carry-over:
+  - Recall-before-review note (if applicable):
+`;
+
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const goal = $("goal"), budget = $("budget"), blocks = $("blocks"),
+        constraints = $("constraints"), evidence = $("evidence"),
+        energy = $("energy"), review = $("review");
+
+  const genBtn = $("genBtn");
+  const resetBtn = $("resetBtn");
+  const saveBtn = $("saveBtn");
+  const loadBtn = $("loadBtn");
+
+  const out = $("out");
+  const status = $("status");
+  const copyPromptBtn = $("copyPromptBtn");
+  const copyTemplateBtn = $("copyTemplateBtn");
+
+  // ---------- Helpers ----------
+  function setStatus(text) {
+    status.innerHTML = `<span class="pill">${text}</span>`;
+  }
+
+  function computeDefaultBlocks() {
+    const b = parseInt(budget.value, 10);
+    if (!b || b < 60) return "";
+    // default: 4 blocks split evenly (rounded to 5m)
+    const each = Math.round((b / 4) / 5) * 5;
+    return `${each}m x 4`;
+  }
+
+  function validate() {
+    const ok = goal.value.trim().length > 0;
+    genBtn.disabled = !ok;
+    return ok;
+  }
+
+  function buildUserInputSection() {
+    const g = goal.value.trim();
+    const tb = budget.value ? `${budget.value.trim()}분` : "(미지정)";
+    const bp = (blocks.value.trim() || computeDefaultBlocks() || "(미지정)");
+    const hc = constraints.value.trim() || "없음";
+    const ev = evidence.value.trim() || "(없음 — 모델이 2~3개 제안 후 진행)";
+    const en = energy.value || "(선택 안 함)";
+    const rv = review.value.trim() || "없음";
+
+    return `[USER INPUT]
+Daily goal: ${g}
+Time budget: ${tb}
+Block preference: ${bp}
+Hard constraints: ${hc}
+Evidence artifacts: ${ev}
+Energy/stress: ${en}
+Review items: ${rv}
+`;
+  }
+
+  function buildFinalPrompt() {
+    const userInput = buildUserInputSection();
+    const instruction = `
+## Output requirements
+- Output must be in Korean.
+- Return ONLY the final plan using the template below.
+- Do not add extra sections or commentary.
+- Keep headings/slots unchanged; fill content only.
+
+## Output template (paste-ready)
+\`\`\`markdown
+${OUTPUT_TEMPLATE}
+\`\`\`
+`;
+    return `${SYSTEM_PROMPT}\n\n${userInput}\n${instruction}`;
+  }
+
+  async function copyToClipboard(text) {
+    await navigator.clipboard.writeText(text);
+    setStatus("Copied");
+    setTimeout(() => setStatus("Ready"), 1200);
+  }
+
+  function saveLocal() {
+    const payload = {
+      goal: goal.value, budget: budget.value, blocks: blocks.value,
+      constraints: constraints.value, evidence: evidence.value,
+      energy: energy.value, review: review.value
+    };
+    localStorage.setItem("os_planner_mvp", JSON.stringify(payload));
+    setStatus("Saved");
+    setTimeout(() => setStatus("Ready"), 1200);
+  }
+
+  function loadLocal() {
+    const raw = localStorage.getItem("os_planner_mvp");
+    if (!raw) { setStatus("No saved data"); return; }
+    const p = JSON.parse(raw);
+    goal.value = p.goal || "";
+    budget.value = p.budget || "";
+    blocks.value = p.blocks || "";
+    constraints.value = p.constraints || "";
+    evidence.value = p.evidence || "";
+    energy.value = p.energy || "";
+    review.value = p.review || "";
+    validate();
+    setStatus("Loaded");
+    setTimeout(() => setStatus("Ready"), 1200);
+  }
+
+  function resetAll() {
+    goal.value = "";
+    budget.value = "";
+    blocks.value = "";
+    constraints.value = "";
+    evidence.value = "";
+    energy.value = "";
+    review.value = "";
+    out.textContent = "";
+    copyPromptBtn.disabled = true;
+    validate();
+    setStatus("Reset");
+    setTimeout(() => setStatus("Ready"), 1200);
+  }
+
+  // ---------- Events ----------
+  [goal, budget, blocks, constraints, evidence, energy, review].forEach(el => {
+    el.addEventListener("input", () => {
+      validate();
+      // live helper: auto-recommend blocks if budget changed and blocks empty
+      if (el === budget && !blocks.value.trim()) {
+        const rec = computeDefaultBlocks();
+        if (rec) blocks.placeholder = `추천: ${rec}`;
+      }
+    });
+  });
+
+  genBtn.addEventListener("click", () => {
+    if (!validate()) return;
+    const prompt = buildFinalPrompt();
+    out.textContent = prompt;
+    copyPromptBtn.disabled = false;
+    setStatus("Generated");
+    setTimeout(() => setStatus("Ready"), 1200);
+  });
+
+  copyPromptBtn.addEventListener("click", async () => {
+    const text = out.textContent.trim();
+    if (!text) return;
+    await copyToClipboard(text);
+  });
+
+  copyTemplateBtn.addEventListener("click", async () => {
+    await copyToClipboard(OUTPUT_TEMPLATE);
+  });
+
+  resetBtn.addEventListener("click", resetAll);
+  saveBtn.addEventListener("click", saveLocal);
+  loadBtn.addEventListener("click", loadLocal);
+
+  // init
+  validate();
+  setStatus("Ready");
+</script>
+</body>
+</html>
